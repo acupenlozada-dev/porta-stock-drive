@@ -3,4 +3,4 @@ pandas
 plotly
 openpyxl
 requests
-streamlit-gsheets
+st-gsheets-connection
