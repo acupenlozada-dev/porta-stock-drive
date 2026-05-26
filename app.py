@@ -9,7 +9,7 @@ import unicodedata
 # CONFIGURACIÓN DE LA FUENTE DE DATOS (GOOGLE SHEETS)
 # ══════════════════════════════════════════════
 SPREADSHEET_ID = "1jCAE3PbADPc7gz16UOvlpby5VzpfR3b8gLNy_4ROEe8"
-SHEET_NAME = "Report"  # Asegúrate de que la pestaña se siga llamando así en tu Drive
+SHEET_NAME = "Report"  # ← ¡Tu pestaña en Drive debe llamarse exactamente así!
 GDRIVE_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=0"
 
 R1="#C8102E"; R2="#E8394A"; R3="#FF6B7A"; RD="#8B0000"
@@ -97,11 +97,9 @@ ALMA_ESP    = "ALMA. ESPERA"
 # ══════════════════════════════════════════════
 @st.cache_data(show_spinner=False, ttl=600)
 def load_data():
-    # Conexión nativa con la hoja de cálculo de Google
     conn = st.connection("gsheets", type=GSheetsConnection)
     df = conn.read(spreadsheet=GDRIVE_URL, worksheet=SHEET_NAME, dtype=str)
     
-    # Normalizar títulos de columnas de la hoja por seguridad
     def norm_col(s):
         s = str(s).strip()
         s = unicodedata.normalize("NFD", s)
@@ -109,7 +107,6 @@ def load_data():
         return s.upper().replace(" ","_").replace(".","_").replace("/","_")
     df.columns = [norm_col(c) for c in df.columns]
 
-    # Convertir las columnas numéricas solicitadas
     for col in [C["stock"], C["pvp"], C["metraje"], C["dsct"]]:
         if col in df.columns:
             df[col] = pd.to_numeric(
@@ -117,7 +114,6 @@ def load_data():
                        .str.replace(r"[^\d.\-]","",regex=True),
                 errors="coerce").fillna(0)
 
-    # Limpieza y formateo de texto
     text_cols = [C["item"], C["almacencod"], C["desc"], C["marca"], C["licencia"], 
                  C["linea"], C["familia"], C["subfamilia"], C["color"], C["temporada"], 
                  C["sucursal"], C["canal"], C["ubi"], C["ubicacion"], C["region"], 
@@ -128,20 +124,15 @@ def load_data():
             df[col] = df[col].fillna("Sin dato").astype(str).str.strip()
             df.loc[df[col]=="", col] = "Sin dato"
 
-    # Forzar relleno de ceros a la izquierda para los códigos ITEM que se hayan truncado en Drive
     if C["item"] in df.columns:
-        # Reemplaza valores flotantes tipo '123.0' a '123' si existiesen antes del rellenado
         df[C["item"]] = df[C["item"]].str.split('.').str[0]
-        # Aplica relleno dinámico (ejemplo estándar para códigos de 6 dígitos)
         df[C["item"]] = df[C["item"]].apply(lambda x: x.zfill(6) if x != "Sin dato" else x)
 
     df = df[df[C["item"]].notna() & (df[C["item"]] != "Sin dato")].copy()
 
-    # Excluir "NO CONSIDERAR" en canal de ventas
     if C["canal"] in df.columns:
         df = df[df[C["canal"]] != "NO CONSIDERAR"].copy()
 
-    # Optimizaciones de tipo categorizado para filtros veloces
     cat_cols = [C["ubi"], C["region"], C["sucursal"], C["linea"], C["familia"], 
                 C["marca"], C["temporada"], C["campana"], C["licencia"], C["promo"], C["vigencia"]]
     for col in cat_cols:
@@ -152,6 +143,52 @@ def load_data():
 
 with st.spinner("Conectando con Google Drive y cargando inventario Porta…"):
     df_raw = load_data()
+
+# ══════════════════════════════════════════════
+# HELPERS GRÁFICOS Y DE DETALLE
+# ══════════════════════════════════════════════
+PC = dict(paper_bgcolor=W, plot_bgcolor=W,
+          margin=dict(l=0,r=0,t=10,b=0),
+          font=dict(family="Inter", color="#0f172a"))
+
+def kpi(col, lbl, val, cls=""):
+    with col:
+        st.markdown(f'<div class="kpi {cls}"><p class="kpi-l">{lbl}</p>'
+                    f'<p class="kpi-v">{val}</p></div>', unsafe_allow_html=True)
+
+def bar_h(data, y, x, cs, height=320):
+    fig = px.bar(data, y=y, x=x, orientation="h", color=x,
+                 color_continuous_scale=cs, height=height,
+                 template="plotly_white", labels={x:"Unidades", y:""})
+    fig.update_layout(**PC, coloraxis_showscale=False)
+    return fig
+
+def pie_chart(data, names, values, height=300):
+    fig = px.pie(data, names=names, values=values, height=height,
+                 color_discrete_sequence=[R1,RD,R2,R3,"#fca5a5","#f97316","#64748b"])
+    fig.update_traces(textposition="inside", textinfo="percent+label", textfont_size=11)
+    fig.update_layout(**PC, showlegend=False)
+    return fig
+
+def tabla_detalle(df_in, cols_extra=None):
+    base = [C["item"], C["desc"], C["marca"], C["linea"], C["familia"],
+            C["color"], C["temporada"], C["stock"], C["pvp"]]
+    if cols_extra:
+        base += cols_extra
+    cols = [c for c in base if c in df_in.columns]
+    out  = df_in[cols].sort_values(C["stock"], ascending=False).copy()
+    out[C["stock"]] = out[C["stock"]].astype(int)
+    return out
+
+def det(col, lbl, val):
+    with col:
+        st.markdown(f"""<div style='background:{BG};border-radius:8px;
+            padding:10px 12px;text-align:center;'>
+            <div style='font-size:.65rem;font-weight:700;color:{G2};
+            text-transform:uppercase;letter-spacing:.4px;'>{lbl}</div>
+            <div style='font-size:.95rem;font-weight:700;color:#0f172a;
+            margin-top:3px;'>{val}</div></div>""",
+            unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
 # SIDEBAR (FILTROS)
@@ -207,42 +244,6 @@ with st.sidebar:
 df = df_raw[m]
 
 # ══════════════════════════════════════════════
-# HELPERS GRÁFICOS
-# ══════════════════════════════════════════════
-PC = dict(paper_bgcolor=W, plot_bgcolor=W,
-          margin=dict(l=0,r=0,t=10,b=0),
-          font=dict(family="Inter", color="#0f172a"))
-
-def kpi(col, lbl, val, cls=""):
-    with col:
-        st.markdown(f'<div class="kpi {cls}"><p class="kpi-l">{lbl}</p>'
-                    f'<p class="kpi-v">{val}</p></div>', unsafe_allow_html=True)
-
-def bar_h(data, y, x, cs, height=320):
-    fig = px.bar(data, y=y, x=x, orientation="h", color=x,
-                 color_continuous_scale=cs, height=height,
-                 template="plotly_white", labels={x:"Unidades", y:""})
-    fig.update_layout(**PC, coloraxis_showscale=False)
-    return fig
-
-def pie_chart(data, names, values, height=300):
-    fig = px.pie(data, names=names, values=values, height=height,
-                 color_discrete_sequence=[R1,RD,R2,R3,"#fca5a5","#f97316","#64748b"])
-    fig.update_traces(textposition="inside", textinfo="percent+label", textfont_size=11)
-    fig.update_layout(**PC, showlegend=False)
-    return fig
-
-def tabla_detalle(df_in, cols_extra=None):
-    base = [C["item"], C["desc"], C["marca"], C["linea"], C["familia"],
-            C["color"], C["temporada"], C["stock"], C["pvp"]]
-    if cols_extra:
-        base += cols_extra
-    cols = [c for c in base if c in df_in.columns]
-    out  = df_in[cols].sort_values(C["stock"], ascending=False).copy()
-    out[C["stock"]] = out[C["stock"]].astype(int)
-    return out
-
-# ══════════════════════════════════════════════
 # HEADER + KPIs GENERALES
 # ══════════════════════════════════════════════
 st.markdown(f"""
@@ -258,16 +259,11 @@ st.markdown(f"""
 </div>""", unsafe_allow_html=True)
 
 c1,c2,c3,c4,c5 = st.columns(5)
-kpi(c1, "Stock Tiendas",
-    f"{int(df[df[C['ubi']].isin(TIENDAS_UBI)][C['stock']].sum()):,}")
-kpi(c2, "Almacén Principal",
-    f"{int(df[df[C['ubi']]==ALMA_PRINC][C['stock']].sum()):,}", "d")
-kpi(c3, "Almacén Espera",
-    f"{int(df[df[C['ubi']]==ALMA_ESP][C['stock']].sum()):,}", "o")
-kpi(c4, "En Ruta",
-    f"{int(df[df[C['ubi']]=='EN RUTA'][C['stock']].sum()):,}", "s")
-kpi(c5, "SKUs únicos",
-    f"{df[C['item']].nunique():,}", "g")
+kpi(c1, "Stock Tiendas", f"{int(df[df[C['ubi']].isin(TIENDAS_UBI)][C['stock']].sum()):,}")
+kpi(c2, "Almacén Principal", f"{int(df[df[C['ubi']]==ALMA_PRINC][C['stock']].sum()):,}", "d")
+kpi(c3, "Almacén Espera", f"{int(df[df[C['ubi']]==ALMA_ESP][C['stock']].sum()):,}", "o")
+kpi(c4, "En Ruta", f"{int(df[df[C['ubi']]=='EN RUTA'][C['stock']].sum()):,}", "s")
+kpi(c5, "SKUs únicos", f"{df[C['item']].nunique():,}", "g")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -285,8 +281,7 @@ tab1,tab2,tab3,tab4,tab5,tab6 = st.tabs([
 
 # TAB 1 — BUSCAR PRODUCTO
 with tab1:
-    buscar = st.text_input("", placeholder="🔎  Escribe código, nombre, color o marca…",
-                           label_visibility="collapsed")
+    buscar = st.text_input("Buscar", placeholder="🔎  Escribe código, nombre, color o marca…", label_visibility="collapsed")
 
     if not buscar:
         df_t0   = df[df[C["ubi"]].isin(TIENDAS_UBI)]
@@ -297,8 +292,7 @@ with tab1:
             pa,pb,pc2 = st.columns(3)
             kpi(pa, "SKUs en TODAS las tiendas",  f"{int((pos0==n0).sum()):,}", "g")
             kpi(pb, "SKUs en ALGUNAS tiendas",    f"{int(((pos0>0)&(pos0<n0)).sum()):,}", "o")
-            kpi(pc2,"SKUs sin stock en tiendas",
-                f"{int(df_t0[df_t0[C['stock']]==0][C['item']].nunique()):,}")
+            kpi(pc2,"SKUs sin stock en tiendas",  f"{int(df_t0[df_t0[C['stock']]==0][C['item']].nunique()):,}")
             st.markdown("<br>", unsafe_allow_html=True)
             st.info("👆 Escribe en el buscador para ver el detalle de un producto.")
     else:
@@ -317,16 +311,12 @@ with tab1:
 
             for _, ir in items_f.head(10).iterrows():
                 idf = res[res[C["item"]]==ir[C["item"]]]
-                with st.expander(
-                    f"**{ir[C['item']]}** — {ir[C['desc']]}  ·  "
-                    f"🗂️ {int(idf[C['stock']].sum()):,} uds totales",
-                    expanded=len(items_f)==1):
-
+                with st.expander(f"**{ir[C['item']]}** — {ir[C['desc']]}  ·  🗂️ {int(idf[C['stock']].sum()):,} uds totales", expanded=len(items_f)==1):
                     r0 = idf.iloc[0]
                     d1,d2,d3,d4,d5 = st.columns(5)
                     det(d1,"Marca",     r0.get(C["marca"],"—"))
                     det(d2,"Línea",     r0.get(C["linea"],"—"))
-                    det(d3,"Familia",   r0.get(C["family"],"—") if "family" in C else r0.get(C["familia"],"—"))
+                    det(d3,"Familia",   r0.get(C["familia"],"—"))
                     det(d4,"Color",     r0.get(C["color"],"—"))
                     det(d5,"Temporada", r0.get(C["temporada"],"—"))
 
@@ -378,12 +368,10 @@ with tab1:
                                     ({len(con_s)}/{len(todas_t)})</span></span>
                         </div>
                         <div style='margin-bottom:5px;'>
-                            {''.join(f'<span class="bsi">✓ {t}</span>' for t in con_s) or
-                             '<span style="color:#64748b;font-size:.8rem;">Sin stock en tiendas</span>'}
+                            {''.join(f'<span class="bsi">✓ {t}</span>' for t in con_s) or '<span style="color:#64748b;font-size:.8rem;">Sin stock en tiendas</span>'}
                         </div>
                         <div>
-                            {''.join(f'<span class="bno">✗ {t}</span>' for t in sin_s) or
-                             f'<span style="color:#059669;font-weight:700;">✅ En todas las tiendas</span>'}
+                            {''.join(f'<span class="bno">✗ {t}</span>' for t in sin_s) or f'<span style="color:#059669;font-weight:700;">✅ En todas las tiendas</span>'}
                         </div>
                     </div>""", unsafe_allow_html=True)
 
@@ -405,13 +393,11 @@ with tab2:
         ca2,cb3 = st.columns([2,1])
         with ca2:
             st.markdown("**Por Familia**")
-            bf = (dt.groupby(C["familia"])[C["stock"]].sum().reset_index()
-                    .query(f"{C['stock']} > 0")
-                    .sort_values(C["stock"], ascending=True))
+            bf = (dt.groupby(C["familia"])[C["stock"]].sum().reset_index().query(f"{C['stock']} > 0").sort_values(C["stock"], ascending=True))
             st.plotly_chart(bar_h(bf, C["familia"], C["stock"], [[0,"#fecdd3"],[1,R1]], max(280,len(bf)*34)), use_container_width=True)
         with cb3:
             st.markdown("**Por Línea**")
-            bl = (dt.groupby(C["linea"])[C["stock"]].sum().reset_index() .sort_values(C["stock"], ascending=False))
+            bl = (dt.groupby(C["linea"])[C["stock"]].sum().reset_index().sort_values(C["stock"], ascending=False))
             st.plotly_chart(pie_chart(bl, C["linea"], C["stock"]), use_container_width=True)
 
         st.markdown("**Productos con stock**")
@@ -520,15 +506,3 @@ with tab6:
     ds[C["stock"]] = ds[C["stock"]].astype(int)
     st.dataframe(ds, use_container_width=True, height=560, hide_index=True)
     st.download_button("⬇️ Exportar todo", ds.to_csv(index=False).encode("utf-8-sig"), "porta_stock.csv","text/csv")
-
-
-# Función auxiliar para la sección de desglose de ítem en TAB 1
-def det(col, lbl, val):
-    with col:
-        st.markdown(f"""<div style='background:{BG};border-radius:8px;
-            padding:10px 12px;text-align:center;'>
-            <div style='font-size:.65rem;font-weight:700;color:{G2};
-            text-transform:uppercase;letter-spacing:.4px;'>{lbl}</div>
-            <div style='font-size:.95rem;font-weight:700;color:#0f172a;
-            margin-top:3px;'>{val}</div></div>""",
-            unsafe_allow_html=True)
