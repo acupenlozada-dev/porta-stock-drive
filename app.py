@@ -92,15 +92,21 @@ ALMA_ESP    = "ALMA. ESPERA"
 # ══════════════════════════════════════════════
 @st.cache_data(show_spinner=False, ttl=600)
 def load_data():
-    df = pd.read_excel(EXCEL_PATH, sheet_name=SHEET_NAME,
-                       dtype=str, engine="openpyxl")
-    # Normalizar columnas: sin espacios, sin tildes, mayúsculas
+    # Conexión a Google Sheets usando el Secret
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    url = st.secrets["GDRIVE_URL"]
+    
+    # Leer el Sheet "Report"
+    df = conn.read(spreadsheet=url, worksheet="Report", usecols=None)
+    
+    # Normalización de columnas (mantenemos tu lógica existente)
     import unicodedata
     def norm_col(s):
         s = str(s).strip()
         s = unicodedata.normalize("NFD", s)
         s = "".join(c for c in s if unicodedata.category(c) != "Mn")
         return s.upper().replace(" ","_").replace(".","_").replace("/","_")
+    
     df.columns = [norm_col(c) for c in df.columns]
 
     # Numéricos
@@ -140,7 +146,7 @@ if not os.path.exists(EXCEL_PATH):
     st.info("Asegúrate de que **PLANTILLA STOCK.xlsx** esté en la raíz del repositorio de GitHub.")
     st.stop()
 
-with st.spinner("Cargando inventario Porta…"):
+with st.spinner("Cargando inventario Porta desde la nube…"):
     df_raw = load_data()
 
 # ══════════════════════════════════════════════
