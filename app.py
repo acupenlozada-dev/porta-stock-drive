@@ -393,7 +393,7 @@ with tab1:
 # ==============================================================================
 with tab2:
     # 1. PARAMETRIZACIÓN DE TEMPORADAS
-    TEMPORADAS_VIGENTES = ["2026 (3)", "2026 (2)", "2026 (1)", "2025 (4)"]
+    TEMPORADAS_VIGENTES = ["TEM - 2026 (3)", "TEM - 2026 (2)", "TEM - 2026 (1)", "TEM - 2025 (4)"]
 
     # 2. FILTRAR SUCURSALES: Solo Tiendas o Tiendas ToGo
     df_solo_tiendas = df[df[C["ubi"]].isin(TIENDAS_UBI)]
