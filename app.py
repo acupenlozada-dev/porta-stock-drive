@@ -389,12 +389,11 @@ with tab1:
                     </div>""", unsafe_allow_html=True)
 
 # ==============================================================================
-# TAB 2 — VISTA POR TIENDA (OPTIMIZADA CON MOTOR DE OBSOLESCENCIA)
+# TAB 2 — VISTA POR TIENDA (RESTAURADA + ARTIFICIO DSCT)
 # ==============================================================================
 with tab2:
-    # 1. PARAMETRIZACIÓN DE TEMPORADAS (Modificable en el tiempo)
-    # Coloca aquí las temporadas que consideras comerciales y vigentes. Todo lo demás será Obsoleto.
-    TEMPORADAS_VIGENTES = ["TEM - 2026 (3)", "TEM - 2026 (2)", "TEM - 2026 (1)", "TEM - 2025 (4)"]
+    # 1. PARAMETRIZACIÓN DE TEMPORADAS
+    TEMPORADAS_VIGENTES = ["2026 (3)", "2026 (2)", "2026 (1)", "2025 (4)"]
 
     # 2. FILTRAR SUCURSALES: Solo Tiendas o Tiendas ToGo
     df_solo_tiendas = df[df[C["ubi"]].isin(TIENDAS_UBI)]
@@ -439,36 +438,19 @@ with tab2:
             bl = (dt.groupby(C["linea"])[C["stock"]].sum().reset_index().sort_values(C["stock"], ascending=False))
             st.plotly_chart(pie_chart(bl, C["linea"], C["stock"]), use_container_width=True)
 
-        # 6. TABLA DE DETALLE CON AGRUPACIÓN CONTROLADA (EVITA REPETIDOS)
+        # 6. TABLA DE DETALLE (Original Fila por Fila + Formato de Descuento x100)
         st.markdown("**Productos con stock en tienda**")
         
-        # Filtramos solo registros con stock > 0 en esta tienda
-        dt_con_stock = dt[dt[C["stock"]] > 0]
+        dt2 = tabla_detalle(dt[dt[C["stock"]] > 0], cols_extra=[C["promo"], C["dsct"]])
         
-        # Agrupamos estrictamente por ITEM para consolidar filas repetidas y evitar distorsión de DSCT
-        dt_agrupado = dt_con_stock.groupby([
-            C["item"], C["desc"], C["marca"], C["linea"], C["familia"], 
-            C["color"], C["temporada"], C["promo"]
-        ]).agg({
-            C["stock"]: "sum",
-            C["pvp"]: "first",  # Trae el primer PVP encontrado para ese SKU
-            C["dsct"]: "first"  # Trae el primer descuento asignado a la promo de ese SKU
-        }).reset_index()
-        
-        # Ordenamos por volumen de stock
-        dt_agrupado = dt_agrupado.sort_values(C["stock"], ascending=False)
-        dt_agrupado[C["stock"]] = dt_agrupado[C["stock"]].astype(int)
-        
-        # Aplicamos el formateo estricto a las columnas numéricas en pantalla
-        df_styled = dt_agrupado.style.format({
-            C["dsct"]: "{:.0f}%",  # Muestra el descuento como porcentaje sin decimales (Ej: 20%)
-            C["pvp"]: "{:.2f}"     # Fuerza al PVP a mostrar exactamente 2 decimales (Ej: 149.90)
+        # Artificio (* 100): Si el valor es 0.20, se multiplica por 100 y se muestra como 20%
+        df_styled = dt2.style.format({
+            C["dsct"]: lambda x: f"{int(round(float(x) * 100))}%" if pd.notnull(x) and float(x) != 0 else "0%",
+            C["pvp"]: "{:.2f}"
         })
         
         st.dataframe(df_styled, use_container_width=True, height=400, hide_index=True)
-        
-        # El botón de descarga conserva los datos puros consolidados
-        st.download_button("⬇️ Exportar Tienda", dt_agrupado.to_csv(index=False).encode("utf-8-sig"), f"porta_{sel_t}.csv", "text/csv")
+        st.download_button("⬇️ Exportar Tienda", dt2.to_csv(index=False).encode("utf-8-sig"), f"porta_{sel_t}.csv", "text/csv")
 
 # TAB 3 — ALMACÉN PRINCIPAL
 with tab3:
@@ -503,7 +485,7 @@ with tab3:
         st.download_button("⬇️ Exportar Almacén", dap2.to_csv(index=False).encode("utf-8-sig"), "porta_alma_principal.csv","text/csv")
 
 # ==============================================================================
-# TAB 4 — PROMOS (RESTAURADA A LOGICA ORIGINAL MAS FORMATO)
+# TAB 4 — PROMOS (RESTAURADA + ARTIFICIO DSCT)
 # ==============================================================================
 with tab4:
     st.markdown("#### Detalle por Promoción")
@@ -529,12 +511,11 @@ with tab4:
 
         st.markdown("**Ítems incluidos en la promo**")
         
-        # Volvemos a tu llamada original de tabla_detalle
         dp2 = tabla_detalle(dp, cols_extra=[C["cod_prom"], C["dsct"]])
         
-        # Aplicamos el mismo formateador tolerante a nulos o strings
+        # Aplicamos la misma lógica con round() para evitar imprecisiones de coma flotante
         dp2_styled = dp2.style.format({
-            C["dsct"]: lambda x: f"{int(x)}%" if pd.notnull(x) and x != 0 else "0%",
+            C["dsct"]: lambda x: f"{int(round(float(x) * 100))}%" if pd.notnull(x) and float(x) != 0 else "0%",
             C["pvp"]: "{:.2f}"
         })
         
