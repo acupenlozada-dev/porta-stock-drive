@@ -503,7 +503,7 @@ with tab3:
         st.download_button("⬇️ Exportar Almacén", dap2.to_csv(index=False).encode("utf-8-sig"), "porta_alma_principal.csv","text/csv")
 
 # ==============================================================================
-# TAB 4 — PROMOS (SOPORTE DSCT ESTABLE)
+# TAB 4 — PROMOS (RESTAURADA A LOGICA ORIGINAL MAS FORMATO)
 # ==============================================================================
 with tab4:
     st.markdown("#### Detalle por Promoción")
@@ -529,10 +529,10 @@ with tab4:
 
         st.markdown("**Ítems incluidos en la promo**")
         
-        # Obtenemos la estructura de datos base desde el helper
+        # Volvemos a tu llamada original de tabla_detalle
         dp2 = tabla_detalle(dp, cols_extra=[C["cod_prom"], C["dsct"]])
         
-        # Aplicamos la misma regla de conversión de strings visuales protegida
+        # Aplicamos el mismo formateador tolerante a nulos o strings
         dp2_styled = dp2.style.format({
             C["dsct"]: lambda x: f"{int(x)}%" if pd.notnull(x) and x != 0 else "0%",
             C["pvp"]: "{:.2f}"
