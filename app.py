@@ -94,7 +94,7 @@ ALMA_ESP    = "ALMA. ESPERA"
 # ══════════════════════════════════════════════
 # CARGA DE DATOS
 # ══════════════════════════════════════════════
-@st.cache_data(show_spinner=False, ttl=600)
+@st.cache_data(show_spinner=False, ttl=86400)
 def load_data():
     conn = st.connection("gsheets", type=GSheetsConnection)
     df = conn.read(spreadsheet=GDRIVE_URL, worksheet=SHEET_NAME, dtype=str)
