@@ -563,7 +563,7 @@ with tab5:
             bf_t = (dtemp.groupby(C["familia"])[C["stock"]].sum().reset_index().query(f"{C['stock']} > 0").sort_values(C["stock"], ascending=True))
             if not bf_t.empty:
                 st.plotly_chart(bar_h(bf_t, C["familia"], C["stock"], [[0,"#fecdd3"],[1,R1]], max(280,len(bf_t)*34), key="graph_bar_tab5"), use_container_width=True)
-        with cb3:
+        with ctb:
             bl_t = (dtemp.groupby(C["linea"])[C["stock"]].sum().reset_index().sort_values(C["stock"], ascending=False))
             if not bl_t.empty:
                 st.plotly_chart(pie_chart(bl_t, C["linea"], C["stock"]), use_container_width=True)
