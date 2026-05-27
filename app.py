@@ -388,35 +388,76 @@ with tab1:
                         </div>
                     </div>""", unsafe_allow_html=True)
 
-# TAB 2 — VISTA POR TIENDA
+# ==============================================================================
+# TAB 2 — VISTA POR TIENDA (OPTIMIZADA CON MOTOR DE OBSOLESCENCIA)
+# ==============================================================================
 with tab2:
-    tiendas_disp = sorted(df[C["sucursal"]].astype(str).unique())
-    sel_t = st.selectbox("Tienda", tiendas_disp, key="sel_tienda_tab2", label_visibility="collapsed", placeholder="Selecciona una tienda…")
+    # 1. PARAMETRIZACIÓN DE TEMPORADAS (Modificable en el tiempo)
+    # Coloca aquí las temporadas que consideras comerciales y vigentes. Todo lo demás será Obsoleto.
+    TEMPORADAS_VIGENTES = ["TEM - 2026 (3)", "TEM - 2026 (2)", "TEM - 2026 (1)", "TEM - 2025 (4)"]
+
+    # 2. FILTRAR SUCURSALES: Solo Tiendas o Tiendas ToGo
+    df_solo_tiendas = df[df[C["ubi"]].isin(TIENDAS_UBI)]
+    tiendas_disp = sorted(df_solo_tiendas[C["sucursal"]].astype(str).unique())
+    
+    sel_t = st.selectbox(
+        "Tienda", 
+        tiendas_disp, 
+        key="sel_tienda_tab2", 
+        label_visibility="collapsed", 
+        placeholder="Selecciona una tienda…"
+    )
+    
     if sel_t:
-        dt = df[df[C["sucursal"]].astype(str)==sel_t]
-        ta,tb2,tc2,td2 = st.columns(4)
-        sku_con  = int((dt.groupby(C["item"])[C["stock"]].sum()>0).sum())
-        sku_sin  = int((dt.groupby(C["item"])[C["stock"]].sum()==0).sum())
-        kpi(ta,  "Stock total",  f"{int(dt[C['stock']].sum()):,}")
-        kpi(tb2, "SKUs únicos",  f"{dt[C['item']].nunique():,}", "d")
-        kpi(tc2, "Con stock",    f"{sku_con:,}", "g")
-        kpi(td2, "Sin stock",    f"{sku_sin:,}", "s")
+        # Segmentamos los datos de la tienda seleccionada
+        dt = df_solo_tiendas[df_solo_tiendas[C["sucursal"]].astype(str) == sel_t]
+        
+        # 3. LÓGICA DE GESTIÓN DE STOCK OBSOLETO
+        # Evaluamos filas que NO pertenezcan a las temporadas vigentes
+        mask_obsoleto = ~dt[C["temporada"]].isin(TEMPORADAS_VIGENTES)
+        
+        stock_total = int(dt[C["stock"]].sum())
+        skus_unicos = dt[C["item"]].nunique()
+        stock_obsoleto = int(dt[mask_obsoleto][C["stock"]].sum())
+        
+        # Calcular ratio de obsolescencia resguardando división por cero
+        porcentaje_obsoleto = (stock_obsoleto / stock_total * 100) if stock_total > 0 else 0
+        
+        # 4. RENDERIZADO DE LAS NUEVAS KPI CARDS
+        ta, tb2, tc2, td2 = st.columns(4)
+        kpi(ta,  "Stock Total",       f"{stock_total:,}")
+        kpi(tb2, "SKUs Únicos",       f"{skus_unicos:,}", "d")
+        kpi(tc2, "Stock Obsoleto",     f"{stock_obsoleto:,}", "o")  # Color naranja de advertencia
+        kpi(td2, "% Obsolescencia",    f"{porcentaje_obsoleto:.1f}%", "s" if porcentaje_obsoleto < 30 else "d")
+        
         st.markdown("<br>", unsafe_allow_html=True)
 
-        ca2,cb3 = st.columns([2,1])
+        # 5. GRÁFICOS VISUALES DE LA TIENDA
+        ca2, cb3 = st.columns([2, 1])
         with ca2:
             st.markdown("**Por Familia**")
             bf = (dt.groupby(C["familia"])[C["stock"]].sum().reset_index().query(f"{C['stock']} > 0").sort_values(C["stock"], ascending=True))
-            # Se añade la clave explícita para evitar colisiones
-            st.plotly_chart(bar_h(bf, C["familia"], C["stock"], [[0,"#fecdd3"],[1,R1]], max(280,len(bf)*34), key="graph_bar_tab2"), use_container_width=True)
+            st.plotly_chart(bar_h(bf, C["familia"], C["stock"], [[0, "#fecdd3"], [1, R1]], max(280, len(bf) * 34), key="graph_bar_tab2"), use_container_width=True)
         with cb3:
             st.markdown("**Por Línea**")
             bl = (dt.groupby(C["linea"])[C["stock"]].sum().reset_index().sort_values(C["stock"], ascending=False))
             st.plotly_chart(pie_chart(bl, C["linea"], C["stock"]), use_container_width=True)
 
-        st.markdown("**Productos con stock**")
-        dt2 = tabla_detalle(dt[dt[C["stock"]]>0])
-        st.dataframe(dt2, use_container_width=True, height=400, hide_index=True)
+        # 6. TABLA DE DETALLE ENRIQUECIDA CON PROMOS Y ESTILOS
+        st.markdown("**Productos con stock en tienda**")
+        
+        # Extraemos las columnas solicitadas
+        dt2 = tabla_detalle(dt[dt[C["stock"]] > 0], cols_extra=[C["promo"], C["dsct"]])
+        
+        # Renombramos temporalmente para una lectura limpia en interfaz si se desea, 
+        # o aplicamos formateo visual directo con el Styler de Pandas
+        df_styled = dt2.style.format({
+            C["dsct"]: "{:.0f}%"  # Agrega el símbolo % visualmente al número de descuento
+        })
+        
+        st.dataframe(df_styled, use_container_width=True, height=400, hide_index=True)
+        
+        # Botón de descarga de los datos limpios de la sucursal
         st.download_button("⬇️ Exportar Tienda", dt2.to_csv(index=False).encode("utf-8-sig"), f"porta_{sel_t}.csv", "text/csv")
 
 # TAB 3 — ALMACÉN PRINCIPAL
